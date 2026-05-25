@@ -101,7 +101,7 @@ COPY . .
 # (`Microsoft.CodeAnalysis.ResourceDescriptionKind` missing).  Pre-building
 # on Windows sidesteps all of this.
 ARG LAUNCHER_RELEASE_TAG=launcher-latest
-ARG LAUNCHER_REPO=adityaparab/tauri-mongodb-template
+ARG LAUNCHER_REPO=adityaparab/inventory-desktop
 RUN curl -fsSL --retry 3 \
     "https://github.com/${LAUNCHER_REPO}/releases/download/${LAUNCHER_RELEASE_TAG}/machine-setup.exe" \
     -o /app/setup-launcher.exe \

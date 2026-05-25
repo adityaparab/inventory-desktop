@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "release:windows": "tauri build --bundles msi,nsis",
+    "release:tag": "node scripts/create-release-tag.mjs",
     "clean": "rimraf ./src-tauri/target"
   },
   "dependencies": {
