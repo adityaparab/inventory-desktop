@@ -122,7 +122,7 @@ Expose Tauri commands for:
 ### Records
 
 - full table of entries
-- filters for part, inspector, date/time range, load number range, and rejection percentage range
+- filters for part, inspector, date/time range, lot number range, and rejection percentage range
 - expandable rows with rejection breakdown
 - edit dialog
 - delete action
