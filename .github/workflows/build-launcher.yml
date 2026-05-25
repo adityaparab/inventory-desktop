@@ -2,13 +2,20 @@ name: Build & publish launcher EXE
 
 on:
   push:
-  workflow_dispatch:
+    branches:
+      - 'release*'
+  pull_request:
+    types:
+      - closed
+    branches:
+      - 'release*'
 
 permissions:
   contents: write   # required to create / move the launcher-latest release tag
 
 jobs:
   build:
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
     runs-on: windows-latest
 
     steps:

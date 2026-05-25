@@ -1,0 +1,116 @@
+name: Release desktop app
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - 'release*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $baseBranch = "${{ github.event.pull_request.base.ref }}"
+          $safeBranch = $baseBranch -replace '[^0-9A-Za-z._-]', '-'
+          $tag = "desktop-$safeBranch-latest"
+          $releaseName = "Inventory Manager ($baseBranch) latest"
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "prerelease=false" >> $env:GITHUB_OUTPUT
+
+      - name: Create or move floating release tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $mergeSha = "${{ github.event.pull_request.merge_commit_sha }}"
+
+          if ([string]::IsNullOrWhiteSpace($mergeSha)) {
+            throw "Missing merge commit SHA for merged pull request."
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          $existing = git ls-remote --tags origin "refs/tags/$tag"
+          if ($existing) {
+            git push origin ":refs/tags/$tag"
+          }
+
+          git tag $tag $mergeSha
+          git push origin "refs/tags/$tag"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: yarn install --frozen-lockfile
+
+      - name: Build release bundles
+        shell: pwsh
+        run: yarn release:windows
+
+      - name: Collect release assets
+        id: assets
+        shell: pwsh
+        run: |
+          $outputDir = "release-assets"
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+          $msi = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $msi) { throw "MSI bundle was not produced." }
+          if (-not $exe) { throw "NSIS bundle was not produced." }
+
+          Copy-Item $msi.FullName -Destination (Join-Path $outputDir $msi.Name) -Force
+          Copy-Item $exe.FullName -Destination (Join-Path $outputDir $exe.Name) -Force
+
+          "files=$outputDir/*" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-manager-${{ steps.meta.outputs.tag }}
+          path: release-assets/*
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.release_name }}
+          body: |
+            Automated desktop release for Inventory Manager.
+
+            Built from commit ${{ github.sha }}.
+          files: ${{ steps.assets.outputs.files }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

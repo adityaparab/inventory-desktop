@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { Alert, AppBar, Box, Button, CircularProgress, Grid, Paper, TextField, Toolbar, Typography } from "@mui/material";
+import DataEntryContainer from "./components/dataEntry/DataEntryContainer";
+import PartsContainer from "./components/parts/PartsContainer";
+import PreferencesContainer from "./components/preferences/PreferencesContainer";
+import RecordsContainer from "./components/records/RecordsContainer";
+import RejectionsContainer from "./components/rejections/RejectionsContainer";
+import ReportsContainer from "./components/reports/ReportsContainer";
+import SideNav from "./components/SideNav";
 import "./App.css";
 
 type MongoStatus = {
   configured: boolean;
   dbPath: string | null;
   savedDbPath: string;
-  configPath: string;
   running: boolean;
   connectionUri: string;
   database: string;
@@ -18,33 +26,13 @@ type PortProcess = {
   name: string;
 };
 
-type DocumentsResponse = {
-  documents: unknown[];
-  limit: number;
-};
-
-function App() {
+const App = () => {
   const [status, setStatus] = useState<MongoStatus | null>(null);
-  const [collections, setCollections] = useState<string[]>([]);
-  const [selectedCollection, setSelectedCollection] = useState("");
-  const [documents, setDocuments] = useState<unknown[]>([]);
   const [setupPath, setSetupPath] = useState("");
   const [error, setError] = useState("");
-  const [activeView, setActiveView] = useState<"documents" | "settings">("documents");
-  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
-  const [isLoadingCollections, setIsLoadingCollections] = useState(false);
-  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
-  const [documentLimit, setDocumentLimit] = useState(0);
+  const [isStarting, setIsStarting] = useState(true);
 
-  const selectedDocumentTitle = useMemo(() => {
-    if (!selectedCollection) {
-      return "Documents";
-    }
-
-    return selectedCollection;
-  }, [selectedCollection]);
-
-  async function startDatabaseWithPrompt() {
+  const startDatabaseWithPrompt = async () => {
     const conflict = await invoke<PortProcess | null>("get_mongodb_port_process");
 
     if (conflict) {
@@ -53,8 +41,7 @@ function App() {
       );
 
       if (!shouldTerminate) {
-        setError("MongoDB could not start because port 27017 is busy.");
-        return false;
+        throw new Error("MongoDB could not start because port 27017 is busy.");
       }
 
       await invoke("terminate_mongodb_port_process", { pid: conflict.pid });
@@ -63,12 +50,10 @@ function App() {
     const nextStatus = await invoke<MongoStatus>("start_mongodb");
     setStatus(nextStatus);
     setSetupPath(nextStatus.savedDbPath);
+  };
 
-    return true;
-  }
-
-  async function refreshStatus() {
-    setIsLoadingStatus(true);
+  const refreshStatus = async () => {
+    setIsStarting(true);
     setError("");
 
     try {
@@ -77,69 +62,16 @@ function App() {
       setSetupPath(nextStatus.savedDbPath);
 
       if (nextStatus.configured) {
-        const started = await startDatabaseWithPrompt();
-
-        if (started) {
-          await loadCollections();
-        }
+        await startDatabaseWithPrompt();
       }
     } catch (caughtError) {
       setError(String(caughtError));
     } finally {
-      setIsLoadingStatus(false);
+      setIsStarting(false);
     }
-  }
+  };
 
-  async function loadCollections() {
-    setIsLoadingCollections(true);
-    setError("");
-
-    try {
-      const names = await invoke<string[]>("list_collections");
-      setCollections(names);
-
-      if (names.length === 0) {
-        setSelectedCollection("");
-        setDocuments([]);
-        return;
-      }
-
-      setSelectedCollection((current) => {
-        if (current && names.includes(current)) {
-          return current;
-        }
-
-        void loadDocuments(names[0]);
-        return names[0];
-      });
-    } catch (caughtError) {
-      setError(String(caughtError));
-    } finally {
-      setIsLoadingCollections(false);
-    }
-  }
-
-  async function loadDocuments(collectionName: string) {
-    setSelectedCollection(collectionName);
-    setIsLoadingDocuments(true);
-    setError("");
-
-    try {
-      const response = await invoke<DocumentsResponse>("list_documents", {
-        collection: collectionName,
-      });
-
-      setDocuments(response.documents);
-      setDocumentLimit(response.limit);
-    } catch (caughtError) {
-      setError(String(caughtError));
-      setDocuments([]);
-    } finally {
-      setIsLoadingDocuments(false);
-    }
-  }
-
-  async function chooseDataFolder() {
+  const chooseDataFolder = async () => {
     const selected = await open({
       directory: true,
       multiple: false,
@@ -149,198 +81,95 @@ function App() {
     if (typeof selected === "string") {
       setSetupPath(selected);
     }
-  }
+  };
 
-  async function saveDataFolder() {
-    setIsLoadingStatus(true);
+  const saveDataFolder = async () => {
+    setIsStarting(true);
     setError("");
 
     try {
-      const nextStatus = await invoke<MongoStatus>("set_mongodb_path", {
-        path: setupPath,
-      });
-
+      const nextStatus = await invoke<MongoStatus>("set_mongodb_path", { path: setupPath });
       setStatus(nextStatus);
       setSetupPath(nextStatus.savedDbPath);
-
-      const started = await startDatabaseWithPrompt();
-
-      if (started) {
-        setActiveView("documents");
-        await loadCollections();
-      }
+      await startDatabaseWithPrompt();
     } catch (caughtError) {
       setError(String(caughtError));
     } finally {
-      setIsLoadingStatus(false);
+      setIsStarting(false);
     }
-  }
+  };
 
   useEffect(() => {
     void refreshStatus();
   }, []);
 
   const isConfigured = status?.configured ?? false;
-  const isSettingsView = activeView === "settings";
-  const showSetupView = !isConfigured && !isSettingsView;
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar" aria-label="Collections">
-        <div className="brand-block">
-          <p className="eyebrow">Inventory</p>
-          <h1>{status?.database ?? "inventory"}</h1>
-        </div>
-
-        <div className="connection-block">
-          <span className={status?.running ? "status-pill is-running" : "status-pill"}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <AppBar position="static">
+        <Toolbar variant="dense">
+          <Typography variant="h6" color="inherit" component="div">
+            Inventory Management
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Typography variant="caption" color="inherit">
             {status?.running ? "MongoDB running" : "MongoDB offline"}
-          </span>
-          <span className="connection-uri">
-            {status?.connectionUri ?? "mongodb://127.0.0.1:27017/inventory"}
-          </span>
-        </div>
+          </Typography>
+        </Toolbar>
+      </AppBar>
 
-        <div className="sidebar-actions">
-          <button type="button" onClick={loadCollections} disabled={!isConfigured || isLoadingCollections}>
-            Refresh
-          </button>
-        </div>
-
-        <nav className="collection-list">
-          {isLoadingCollections ? <p className="muted">Loading collections</p> : null}
-
-          {!isLoadingCollections && collections.length === 0 ? (
-            <p className="muted">No collections</p>
+      {isStarting ? (
+        <Box sx={{ display: "flex", justifyContent: "center", p: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : !isConfigured ? (
+        <Box sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, maxWidth: 860 }}>
+            <Typography variant="h5" sx={{ mb: 2 }}>
+              Configure MongoDB Storage
+            </Typography>
+            {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+            <Grid container spacing={2} alignItems="center">
+              <Grid size={{ xs: 12, md: 8 }}>
+                <TextField fullWidth label="MongoDB data folder" value={setupPath} onChange={(event) => setSetupPath(event.target.value)} />
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }}>
+                <Button fullWidth variant="outlined" onClick={chooseDataFolder}>Browse</Button>
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }}>
+                <Button fullWidth variant="contained" onClick={saveDataFolder} disabled={!setupPath.trim()}>Start</Button>
+              </Grid>
+            </Grid>
+          </Paper>
+        </Box>
+      ) : (
+        <Grid container spacing={2} sx={{ p: 2 }}>
+          {error ? (
+            <Grid size={12}>
+              <Alert severity="error" onClose={() => setError("")}>{error}</Alert>
+            </Grid>
           ) : null}
-
-          {collections.map((collection) => (
-            <button
-              className={collection === selectedCollection ? "collection-item is-active" : "collection-item"}
-              key={collection}
-              type="button"
-              onClick={() => {
-                setActiveView("documents");
-                void loadDocuments(collection);
-              }}
-            >
-              <span>{collection}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button
-            className={isSettingsView ? "icon-button is-active" : "icon-button"}
-            type="button"
-            aria-label="Settings"
-            title="Settings"
-            onClick={() => setActiveView("settings")}
-          >
-            <span aria-hidden="true">⚙</span>
-          </button>
-        </div>
-      </aside>
-
-      <section className="detail-view">
-        <header className="detail-header">
-          <div>
-            <p className="eyebrow">{isSettingsView ? "Configuration" : "Collection"}</p>
-            <h2>{isSettingsView ? "Settings" : selectedDocumentTitle}</h2>
-          </div>
-          {!isSettingsView ? (
-            <button
-              type="button"
-              onClick={() => selectedCollection && loadDocuments(selectedCollection)}
-              disabled={!selectedCollection || isLoadingDocuments}
-            >
-              Reload
-            </button>
-          ) : null}
-        </header>
-
-        {error ? <div className="error-banner">{error}</div> : null}
-
-        {showSetupView ? (
-          <section className="setup-panel" aria-label="MongoDB data folder setup">
-            <div>
-              <p className="eyebrow">Setup</p>
-              <h2>MongoDB data folder</h2>
-              <p className="muted">Config file: {status?.configPath ?? "conf\\config.json"}</p>
-            </div>
-
-            <div className="path-row">
-              <input
-                value={setupPath}
-                onChange={(event) => setSetupPath(event.currentTarget.value)}
-                placeholder="Choose a local folder"
-              />
-              <button type="button" onClick={chooseDataFolder}>
-                Choose
-              </button>
-              <button type="button" onClick={saveDataFolder} disabled={!setupPath || isLoadingStatus}>
-                Save
-              </button>
-            </div>
-          </section>
-        ) : null}
-
-        {isSettingsView ? (
-          <section className="setup-panel" aria-label="Settings">
-            <div>
-              <p className="eyebrow">Database</p>
-              <h2>MongoDB data folder</h2>
-              <p className="muted">Config file: {status?.configPath ?? "conf\\config.json"}</p>
-            </div>
-
-            <div className="path-row">
-              <input
-                value={setupPath}
-                onChange={(event) => setSetupPath(event.currentTarget.value)}
-                placeholder="Choose a local folder"
-              />
-              <button type="button" onClick={chooseDataFolder}>
-                Choose
-              </button>
-              <button type="button" onClick={saveDataFolder} disabled={!setupPath || isLoadingStatus}>
-                Save
-              </button>
-            </div>
-          </section>
-        ) : null}
-
-        {isConfigured && !isSettingsView ? (
-          <section className="documents-panel">
-            <div className="documents-toolbar">
-              <span>
-                {documents.length} document{documents.length === 1 ? "" : "s"}
-              </span>
-              {documentLimit > 0 ? <span className="muted">Limit {documentLimit}</span> : null}
-            </div>
-
-            {isLoadingDocuments ? <p className="muted">Loading documents</p> : null}
-
-            {!isLoadingDocuments && selectedCollection && documents.length === 0 ? (
-              <p className="empty-state">No documents in this collection</p>
-            ) : null}
-
-            {!isLoadingDocuments && !selectedCollection ? (
-              <p className="empty-state">Choose a collection</p>
-            ) : null}
-
-            <div className="document-list">
-              {documents.map((document, index) => (
-                <article className="document-card" key={`${selectedCollection}-${index}`}>
-                  <div className="document-index">#{index + 1}</div>
-                  <pre>{JSON.stringify(document, null, 2)}</pre>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </section>
-    </main>
+          <Grid size={{ xs: 12, md: 2 }}>
+            <SideNav />
+          </Grid>
+          <Grid size={{ xs: 12, md: 10 }}>
+            <Paper sx={{ p: 2, minHeight: "80vh" }}>
+              <Routes>
+                <Route path="/data-entry" element={<DataEntryContainer />} />
+                <Route path="/records" element={<RecordsContainer />} />
+                <Route path="/reports" element={<ReportsContainer />} />
+                <Route path="/parts" element={<PartsContainer />} />
+                <Route path="/rejections" element={<RejectionsContainer />} />
+                <Route path="/preferences" element={<PreferencesContainer />} />
+                <Route path="/" element={<Navigate to="/data-entry" replace />} />
+              </Routes>
+            </Paper>
+          </Grid>
+        </Grid>
+      )}
+    </Box>
   );
-}
+};
 
 export default App;

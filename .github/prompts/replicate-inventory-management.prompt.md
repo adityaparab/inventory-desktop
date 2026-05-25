@@ -14,7 +14,7 @@ Build the desktop version in:
 - `src` for the React frontend
 - `src-tauri` for the Rust backend
 
-Do **not** implement the target repo as a web app. Convert it into a desktop architecture.
+Implement parity as a Tauri desktop app only, adapting the target repo's web architecture into this desktop architecture.
 
 ## Scope
 
@@ -22,12 +22,12 @@ Preserve the same:
 
 - feature set
 - screen structure
-- route layout
+- navigational route organization
 - dark MUI look and feel
 - data model
 - user workflows
 
-Ignore the current root `client` and `server` product behavior except where small pieces can be safely reused. The real target is parity with `bokyabhau/inventory-management` in `src` and `src-tauri`.
+Ignore the current root `client` and `server` product behavior as a behavioral reference. Reuse code from them only for isolated utilities or infrastructure that do not change parity with `bokyabhau/inventory-management` in `src` and `src-tauri`.
 
 ## Functional parity to implement
 
@@ -54,7 +54,7 @@ Keep the same overall desktop experience:
   - Rejections
   - Preferences
 
-Preserve a visually similar dark Material UI style, forms, dialogs, tables, charts, and interactions.
+Match the target repo's dark Material UI visual style, forms, dialogs, tables, charts, and interaction patterns closely, without requiring pixel-exact duplication.
 
 ## Backend requirements
 
@@ -75,7 +75,7 @@ Expose Tauri commands for:
 - unique names for parts, rejections, and preferences where applicable
 - `totalRejections` computed from rejection items
 - filtering behavior aligned with the target repo
-- warning and danger thresholds loaded from preferences
+- warning and danger thresholds loaded from preferences when present, otherwise using the target repo defaults
 
 ## Data model to preserve
 
@@ -148,15 +148,14 @@ Expose Tauri commands for:
 ## Important implementation notes
 
 - Replace `/api/...` fetch calls with a frontend client layer that invokes Tauri commands.
-- Keep a query/cache abstraction similar to the target repo.
-- Bring in the frontend dependencies needed for parity, including:
+- Preserve the target repo's query/cache pattern.
+- Add the frontend libraries required for parity, including:
   - MUI
   - React Router
   - TanStack Query
   - Dayjs
   - Recharts
   - ExcelJS
-- Preserve behavior defaults used in the target repo for warning and danger thresholds when preferences are missing.
 
 ## Suggested implementation order
 
