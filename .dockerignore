@@ -1,0 +1,29 @@
+# Git history
+.git/
+.gitignore
+
+# Rust build artifacts — these are very large and are rebuilt inside the image
+src-tauri/target/
+
+# Frontend build output — rebuilt inside the image
+dist/
+
+# Node modules — reinstalled inside the image
+node_modules/
+server/node_modules/
+server/dist/
+
+# Dev/editor files
+.vscode/
+.idea/
+*.suo
+*.sw?
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Local environment overrides
+.env
+.env.local
+.env.*.local

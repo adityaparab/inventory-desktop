@@ -1,0 +1,58 @@
+name: Build & publish launcher EXE
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to create / move the launcher-latest release tag
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish (single-file self-contained win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish launcher/Launcher.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o launcher/publish
+
+      - name: Verify exe was produced
+        shell: pwsh
+        run: |
+          $exe = "launcher/publish/machine-setup.exe"
+          if (-not (Test-Path $exe)) { throw "Expected $exe to exist." }
+          $sizeMB = [Math]::Round((Get-Item $exe).Length / 1MB, 2)
+          Write-Host "machine-setup.exe size: $sizeMB MB"
+
+      # Re-publish the floating "launcher-latest" tag/release so the Dockerfile
+      # always pulls the most recent build at deploy time. The release name is
+      # stable so the download URL never changes.
+      - name: Publish floating "launcher-latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: launcher-latest
+          name: Machine setup launcher (latest)
+          body: |
+            Auto-built launcher EXE.
+
+            Built from commit ${{ github.sha }} on ${{ github.ref_name }}.
+          files: launcher/publish/machine-setup.exe
+          make_latest: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

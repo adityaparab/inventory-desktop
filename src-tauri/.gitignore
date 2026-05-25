@@ -1,0 +1,15 @@
+g# ── Cargo / Rust ─────────────────────────────────────────────────────────────
+# Compiled output, build cache, release binaries
+/target/
+
+# Cargo.lock should be committed for binaries; omit if this is a library.
+# This is a binary crate, so Cargo.lock is intentionally NOT listed here.
+
+# ── Tauri generated files ────────────────────────────────────────────────────
+# JSON schemas auto-generated from capabilities — regenerated on every build.
+/gen/schemas/
+
+# MongoDB log and lock files that mongod writes into the data directory
+# (only relevant if dbPath is accidentally set inside the project tree)
+*.lock
+mongod.log
